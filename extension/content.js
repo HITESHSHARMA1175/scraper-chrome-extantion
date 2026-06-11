@@ -225,31 +225,56 @@ async function fetchProfileDetails(url) {
       }
     }
 
-    // 3. Rating
+    // 3. Rating & Reviews Count multi-tiered extraction on Profile page
+    let rating = "N/A";
     const ratingSel = ['.rating-value', '.rate_value', '.rating_value', '.votes_count', 'span[class*="rating"]', 'div[class*="rating"]', '.green-box'];
     for (let sel of ratingSel) {
       const el = doc.querySelector(sel);
       if (el && el.innerText.trim()) {
         const ratingMatch = el.innerText.trim().match(/\b[1-5]\.[0-9]\b/);
         if (ratingMatch) {
-          profileData.rating = ratingMatch[0];
+          rating = ratingMatch[0];
           break;
         }
       }
     }
+    if (rating === "N/A" && doc.body) {
+      const elements = doc.body.querySelectorAll('*');
+      for (let el of elements) {
+        const text = el.innerText ? el.innerText.trim() : '';
+        const className = el.className || '';
+        if (text && /rating|rate|green|star/i.test(className)) {
+          const decMatch = text.match(/\b([1-5]\.[0-9])\b/);
+          if (decMatch) {
+            rating = decMatch[1];
+            break;
+          }
+        }
+      }
+    }
+    profileData.rating = rating;
 
     // 4. Reviews Count
+    let reviews = "N/A";
     const reviewsSel = ['.votes_count', '.reviews_count', 'span[class*="vote"]', 'span[class*="review"]', '.votes_count_val'];
     for (let sel of reviewsSel) {
       const el = doc.querySelector(sel);
       if (el && el.innerText.trim()) {
         const votesMatch = el.innerText.trim().match(/\b\d+\b/);
         if (votesMatch) {
-          profileData.reviews = votesMatch[0];
+          reviews = votesMatch[0];
           break;
         }
       }
     }
+    if (reviews === "N/A" && doc.body) {
+      const text = doc.body.innerText || '';
+      const reviewsMatch = text.match(/\b(\d+)\s+(?:Rating|Review|Vote)s?\b/i);
+      if (reviewsMatch) {
+        reviews = reviewsMatch[1];
+      }
+    }
+    profileData.reviews = reviews;
 
     // 5. WhatsApp
     const waSel = ['a[href*="wa.me"]', 'a[href*="whatsapp"]', '[class*="whatsapp"] a', '[class*="whatsapp"]'];
@@ -427,8 +452,11 @@ async function extractData() {
         }
       }
 
-      // 4. Rating
+      // 4. Rating & Reviews Count multi-tiered extraction
       let rating = "N/A";
+      let reviews = "N/A";
+
+      // Tier 1: Specific CSS Selectors
       const ratingSelectors = [
         '.resultbox_totalrating',
         '.resultbox_rating',
@@ -436,25 +464,21 @@ async function extractData() {
         'span.green-box',
         'span.rating-value',
         'span[class*="rating"]',
-        'span[class*="rate"]'
+        'span[class*="rate"]',
+        '.resultbox_rating_val'
       ];
       for (let sel of ratingSelectors) {
         const el = parent.querySelector(sel);
-        if (el && el.innerText.trim()) {
-          const text = el.innerText.trim();
-          const ratingMatch = text.match(/\b[1-5]\.[0-9]\b/);
-          if (ratingMatch) {
-            rating = ratingMatch[0];
-            break;
-          } else if (!isNaN(parseFloat(text)) && parseFloat(text) >= 1 && parseFloat(text) <= 5) {
-            rating = parseFloat(text).toFixed(1);
+        if (el) {
+          const text = el.innerText ? el.innerText.trim() : '';
+          const m = text.match(/\b([1-5]\.[0-9])\b/);
+          if (m) {
+            rating = m[1];
             break;
           }
         }
       }
 
-      // 5. Reviews Count
-      let reviews = "N/A";
       const reviewsSelectors = [
         '.resultbox_countrating',
         '.resultbox_count',
@@ -465,13 +489,55 @@ async function extractData() {
       ];
       for (let sel of reviewsSelectors) {
         const el = parent.querySelector(sel);
-        if (el && el.innerText.trim()) {
-          const text = el.innerText.trim();
-          const votesMatch = text.match(/\b\d+\b/);
-          if (votesMatch) {
-            reviews = votesMatch[0];
+        if (el) {
+          const text = el.innerText ? el.innerText.trim() : '';
+          const m = text.match(/\b(\d+)\b/);
+          if (m) {
+            reviews = m[1];
             break;
           }
+        }
+      }
+
+      // Tier 2: General Descendant DOM text scanner
+      if (rating === "N/A" || reviews === "N/A") {
+        const descendants = parent.querySelectorAll('*');
+        for (let el of descendants) {
+          const text = el.innerText ? el.innerText.trim() : '';
+          if (!text) continue;
+
+          // Match rating floating number inside a rating-like element
+          if (rating === "N/A") {
+            const className = el.className || '';
+            const isRatingClass = /rating|rate|green|star|score|capsule/i.test(className);
+            const decMatch = text.match(/\b([1-5]\.[0-9])\b/);
+            if (decMatch && (isRatingClass || text.includes('★') || text.includes('star'))) {
+              rating = decMatch[1];
+            }
+          }
+
+          // Match reviews count text pattern
+          if (reviews === "N/A") {
+            const reviewsMatch = text.match(/\b(\d+)\s+(?:Rating|Review|Vote)s?\b/i);
+            if (reviewsMatch) {
+              reviews = reviewsMatch[1];
+            }
+          }
+        }
+      }
+
+      // Tier 3: Direct Card raw innerText fallback regex scanner
+      if (rating === "N/A") {
+        const decMatch = cardText.match(/\b([1-5]\.[0-9])\s*★/i) || 
+                         cardText.match(/\b([1-5]\.[0-9])\b/);
+        if (decMatch) {
+          rating = decMatch[1];
+        }
+      }
+      if (reviews === "N/A") {
+        const reviewsMatch = cardText.match(/\b(\d+)\s+(?:Rating|Review|Vote)s?\b/i);
+        if (reviewsMatch) {
+          reviews = reviewsMatch[1];
         }
       }
 
@@ -646,6 +712,11 @@ async function extractData() {
           if (profileDetails.location && profileDetails.location !== 'N/A') location = profileDetails.location;
         }
       }
+
+      // Debug logs as requested
+      console.log(`Found Rating: ${rating}`);
+      console.log(`Found Reviews: ${reviews}`);
+      console.log(`Business: ${name}`);
 
       // Push sanitised results
       results.push({
