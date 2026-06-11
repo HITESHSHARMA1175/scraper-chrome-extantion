@@ -116,60 +116,39 @@ resetBtn.addEventListener('click', () => {
   statusText.innerText = 'Initializing...';
 });
 
-// Download Excel
+// Download CSV
 downloadBtn.addEventListener('click', () => {
   if (currentResults.length === 0) {
     alert('No results to download.');
     return;
   }
 
-  // Build Excel XML (SpreadsheetML) content
-  let xmlContent = `<?xml version="1.0"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:o="urn:schemas-microsoft-com:office:office"
- xmlns:x="urn:schemas-microsoft-com:office:excel"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:html="http://www.w3.org/TR/REC-html40">
- <Worksheet ss:Name="JustDial Listings">
-  <Table>
-   <Row>
-    <Cell><Data ss:Type="String">Name</Data></Cell>
-    <Cell><Data ss:Type="String">Address</Data></Cell>
-    <Cell><Data ss:Type="String">Phone</Data></Cell>
-   </Row>`;
+  // Build CSV content
+  let csvContent = "\ufeffName,Address,Phone\n"; // Added BOM for proper UTF-8 Excel encoding
 
   currentResults.forEach(item => {
-    // Escape XML special characters to prevent document corruption
-    const escapeXml = (str) => {
-      if (!str) return '';
-      return str.replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&apos;');
+    // Escape standard CSV fields
+    const escapeCsv = (str) => {
+      if (!str) return '""';
+      // Replace any multi-line/newline characters with a space
+      let cleaned = str.replace(/\r?\n|\r/g, ' ').trim();
+      // Escape double quotes inside the field (replace " with "")
+      if (cleaned.includes('"') || cleaned.includes(',') || cleaned.includes('\n')) {
+        return `"${cleaned.replace(/"/g, '""')}"`;
+      }
+      return `"${cleaned}"`;
     };
 
-    const escapedName = escapeXml(item.name);
-    const escapedAddress = escapeXml(item.address);
-    const escapedPhone = escapeXml(item.phone);
+    const escapedName = escapeCsv(item.name);
+    const escapedAddress = escapeCsv(item.address);
+    const escapedPhone = escapeCsv(item.phone);
 
-    xmlContent += `
-   <Row>
-    <Cell><Data ss:Type="String">${escapedName}</Data></Cell>
-    <Cell><Data ss:Type="String">${escapedAddress}</Data></Cell>
-    <Cell><Data ss:Type="String">${escapedPhone}</Data></Cell>
-   </Row>`;
+    csvContent += `${escapedName},${escapedAddress},${escapedPhone}\n`;
   });
 
-  xmlContent += `
-  </Table>
- </Worksheet>
-</Workbook>`;
-
-  const base64Data = btoa(unescape(encodeURIComponent(xmlContent)));
-  const dataUrl = 'data:application/vnd.ms-excel;charset=utf-8;base64,' + base64Data;
-  const filename = `JustDial_${currentKeyword.replace(/\s+/g, '_')}_${currentCity.replace(/\s+/g, '_')}.xls`;
+  const base64Data = btoa(unescape(encodeURIComponent(csvContent)));
+  const dataUrl = 'data:text/csv;charset=utf-8;base64,' + base64Data;
+  const filename = 'listings.csv';
 
   // Get active tab and trigger the download from the web page context of that tab.
   // This bypasses extension popup restrictions on data URLs which force raw GUID filenames.
