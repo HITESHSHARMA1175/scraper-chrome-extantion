@@ -180,9 +180,28 @@ function downloadCsv() {
     pincode: 'Pincode'
   };
 
-  const activeFieldKeys = allFieldKeys.filter(key => selectedFields[key]);
+  const activeFieldKeys = allFieldKeys.filter(key => selectedFields[key]).filter(key => {
+    // Dynamic column exclusion: Drop columns that are completely empty / N/A across all records
+    return currentResults.some(item => {
+      let val = '';
+      if (key === 'name') val = item.name;
+      else if (key === 'phone') val = item.phone;
+      else if (key === 'address') val = item.address;
+      else if (key === 'rating') val = item.rating;
+      else if (key === 'reviews') val = item.reviews;
+      else if (key === 'website') val = item.website;
+      else if (key === 'whatsapp') val = item.whatsapp;
+      else if (key === 'email') val = item.email;
+      else if (key === 'location') val = item.location;
+      else if (key === 'category') val = item.category;
+      else if (key === 'years') val = item.years_in_business;
+      else if (key === 'hours') val = item.opening_hours;
+      else if (key === 'pincode') val = item.pincode;
+      return val !== undefined && val !== null && String(val).trim() !== '' && String(val).trim() !== 'N/A';
+    });
+  });
   if (activeFieldKeys.length === 0) {
-    alert('Please select at least one field to export.');
+    alert('Please select at least one field with data to export.');
     return;
   }
 
@@ -191,7 +210,7 @@ function downloadCsv() {
 
   currentResults.forEach(item => {
     const escapeCsv = (str) => {
-      if (str === undefined || str === null) return '""';
+      if (str === undefined || str === null || String(str).trim() === 'N/A') return '""';
       let stringVal = String(str);
       let cleaned = stringVal.replace(/\r?\n|\r/g, ' ').trim();
       if (cleaned.includes('"') || cleaned.includes(',') || cleaned.includes('\n')) {

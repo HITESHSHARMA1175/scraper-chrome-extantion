@@ -541,20 +541,31 @@ async function extractData() {
         }
       }
 
-      // 6. Category
+      // 6. Category (Joined comma-separated list of badges)
       let category = "N/A";
-      const categorySelectors = [
+      const catSelectors = [
         '.resultbox_category',
         '.resultbox_subtext',
         'span[class*="category"]',
-        'a[class*="category"]'
+        'a[class*="category"]',
+        '[class*="cat-tag"]',
+        '[class*="category-tag"]',
+        '.comp-cat'
       ];
-      for (let sel of categorySelectors) {
-        const el = parent.querySelector(sel);
-        if (el && el.innerText.trim()) {
-          category = el.innerText.trim();
-          break;
+      let categoriesList = [];
+      for (let sel of catSelectors) {
+        const els = parent.querySelectorAll(sel);
+        if (els && els.length > 0) {
+          els.forEach(el => {
+            const text = el.innerText.trim();
+            if (text && !categoriesList.includes(text) && text !== "AD" && text !== "Ad" && text !== "Sponsored") {
+              categoriesList.push(text);
+            }
+          });
         }
+      }
+      if (categoriesList.length > 0) {
+        category = categoriesList.join(', ');
       }
 
       // 7. Years in Business
@@ -634,8 +645,8 @@ async function extractData() {
         }
       }
 
-      // 11. Opening Hours
-      let opening_hours = "N/A";
+      // 11. Opening Hours (initialize as empty string)
+      let opening_hours = "";
       const hoursSelectors = [
         '.resultbox_openstatus',
         '.open-status',
@@ -652,7 +663,7 @@ async function extractData() {
           }
         }
       }
-      if (opening_hours === "N/A") {
+      if (opening_hours === "") {
         const match = cardText.match(/\b(?:Open|Closed)(?:\s+(?:until|at|now|24\s*Hrs|hours))?[^\n,]*/i);
         if (match) {
           opening_hours = match[0].trim();
@@ -761,7 +772,26 @@ function triggerDownload() {
   };
 
   const allKeys = ['name', 'phone', 'address', 'rating', 'reviews', 'website', 'whatsapp', 'email', 'location', 'category', 'years', 'hours', 'pincode'];
-  const activeFieldKeys = allKeys.filter(key => selectedFields[key]);
+  const activeFieldKeys = allKeys.filter(key => selectedFields[key]).filter(key => {
+    // Dynamic column exclusion: Drop columns that are completely empty / N/A across all records
+    return results.some(item => {
+      let val = '';
+      if (key === 'name') val = item.name;
+      else if (key === 'phone') val = item.phone;
+      else if (key === 'address') val = item.address;
+      else if (key === 'rating') val = item.rating;
+      else if (key === 'reviews') val = item.reviews;
+      else if (key === 'website') val = item.website;
+      else if (key === 'whatsapp') val = item.whatsapp;
+      else if (key === 'email') val = item.email;
+      else if (key === 'location') val = item.location;
+      else if (key === 'category') val = item.category;
+      else if (key === 'years') val = item.years_in_business;
+      else if (key === 'hours') val = item.opening_hours;
+      else if (key === 'pincode') val = item.pincode;
+      return val !== undefined && val !== null && String(val).trim() !== '' && String(val).trim() !== 'N/A';
+    });
+  });
   
   if (activeFieldKeys.length === 0) return;
 
@@ -770,7 +800,7 @@ function triggerDownload() {
 
   results.forEach(item => {
     const escapeCsv = (str) => {
-      if (str === undefined || str === null) return '""';
+      if (str === undefined || str === null || String(str).trim() === 'N/A') return '""';
       let stringVal = String(str);
       let cleaned = stringVal.replace(/\r?\n|\r/g, ' ').trim();
       if (cleaned.includes('"') || cleaned.includes(',') || cleaned.includes('\n')) {
