@@ -1,46 +1,38 @@
-# JustDial Data Scraper
+# JustDial Scraper — Chrome Extension
 
-A web application that scrapes business listings from JustDial based on city and keywords. Built with a Flask backend, a vanilla HTML/JS frontend, and an automated scraper using `undetected-chromedriver`.
+A lightweight, powerful Manifest V3 Google Chrome Extension that extracts business names, addresses, and phone numbers from JustDial listing pages. 
 
-## Features
-- Scrape JustDial listings automatically.
-- Save scraped data into CSV files.
-- Modern frontend for inputting target URLs or city/keywords.
-- Unified web service: backend serves the frontend statically.
-- Configured for Docker and Render deployment.
+Because it runs directly inside your local residential browser, it uses your own local IP address and session cookies. This successfully bypasses cloud IP blacklist blocks (like AWS, Heroku, or Render) and anti-bot layers.
 
-## Tech Stack
-- **Frontend**: HTML, Vanilla JS, CSS
-- **Backend**: Python, Flask, Gunicorn
-- **Scraper**: Selenium, undetected-chromedriver
-- **Deployment**: Docker, Render
+---
 
-## Running Locally
+## ✨ Features
+- **Residential Scraping**: Bypasses cloud host IP block firewalls by running locally.
+- **Excel-Compatible Export**: Downloads directly as a SpreadsheetML Excel sheet (`.xls`) to prevent Microsoft Excel from dropping leading zeros in phone numbers.
+- **Glassmorphism Dark Theme**: Modern, premium dark UI with status indicators and micro-animations.
+- **Background Scrape State**: Scraping runs in a background service worker. If the popup closes, the scraper keeps working in the tab and retains your data.
+- **Popup Bypassing & Auto-Scrolling**: Automatically dismisses "maybe later" modals and scrolls down to trigger lazy loading.
 
-1. Create a Python virtual environment and activate it:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: .\venv\Scripts\activate
-   ```
-2. Install the required dependencies:
-   ```bash
-   pip install -r backend/requirements.txt
-   ```
-3. Run the application (this will start the Flask server which also serves the frontend):
-   ```bash
-   cd backend
-   python app.py
-   ```
-4. Open http://localhost:5000 in your browser.
+---
 
-## Deployment on Render
+## 🚀 How to Install
 
-This project is configured to be deployed on Render using a Docker container, which guarantees that Google Chrome is installed for the `undetected-chromedriver` to work properly.
+1. Open **Google Chrome** on your computer.
+2. Navigate to **`chrome://extensions/`** by typing it in the address bar.
+3. In the top-right corner, toggle **Developer mode** to **ON**.
+4. In the top-left corner, click the **Load unpacked** button.
+5. Select the **`extension`** folder inside this repository.
+6. The extension is now loaded! Pin it to your toolbar by clicking the puzzle piece icon next to your profile picture.
 
-1. Push all your code to a GitHub repository.
-2. Go to the [Render Dashboard](https://dashboard.render.com).
-3. Click on **New** -> **Blueprint**.
-4. Connect the repository. Render will detect the `render.yaml` file.
-5. Deploy the Web Service.
+---
 
-**Note on Scraping Limits**: Web scraping JustDial is intensive and may hit Render's free tier memory limits. Keep an eye on the logs during execution.
+## 🕷️ How to Use
+
+1. Click the **JustDial Scraper** icon in your Chrome toolbar.
+2. Enter the search parameters:
+   - **City**: e.g., `Mumbai`
+   - **Keyword**: e.g., `Bike Dealers`
+   - **Record Limit**: e.g., `50`
+3. Click **Start Scraping**.
+4. A new background tab will open and automatically scroll through JustDial to load and collect listings.
+5. Once completed (or if you click **Stop**), click **Download Excel** to save the spreadsheet to your device.

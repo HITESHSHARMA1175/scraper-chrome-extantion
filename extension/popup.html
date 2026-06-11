@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JustDial Data Scraper</title>
+  <link rel="stylesheet" href="popup.css">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="extension-container">
+    <header class="header">
+      <div class="logo-area">
+        <span class="logo-emoji">🕷️</span>
+        <div class="logo-text">
+          <h1>JustDial Scraper</h1>
+          <p class="subtitle">Residential Browser Agent</p>
+        </div>
+      </div>
+    </header>
+
+    <main class="content">
+      <!-- Input Panel -->
+      <div id="input-panel" class="card fade-in">
+        <h2>Parameters</h2>
+        
+        <div class="form-group">
+          <label for="city">City</label>
+          <input type="text" id="city" placeholder="e.g. Bangalore" value="">
+        </div>
+
+        <div class="form-group">
+          <label for="keyword">Search Keyword</label>
+          <input type="text" id="keyword" placeholder="e.g. Pizza" value="">
+        </div>
+
+        <div class="form-group">
+          <label for="limit">Target Record Limit</label>
+          <input type="number" id="limit" min="5" max="500" value="50">
+        </div>
+
+        <button id="start-btn" class="primary-btn">
+          <span>Start Scraping</span>
+          <svg class="icon-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+
+      <!-- Progress Panel -->
+      <div id="progress-panel" class="card hidden">
+        <h2>Scraping Progress</h2>
+        
+        <div class="progress-details">
+          <div class="spinner-container">
+            <div class="pulse-spinner"></div>
+            <div class="count-overlay">
+              <span id="collected-count">0</span>
+              <span class="count-label">listings</span>
+            </div>
+          </div>
+          <p id="status-text" class="status-msg">Initializing...</p>
+        </div>
+
+        <div class="button-row">
+          <button id="stop-btn" class="danger-btn">Stop</button>
+        </div>
+      </div>
+
+      <!-- Results Panel -->
+      <div id="results-panel" class="card hidden">
+        <h2>Scrape Results</h2>
+        
+        <div class="success-banner">
+          <svg class="success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>
+          <div class="banner-text">
+            <h3>Completed successfully!</h3>
+            <p><span id="total-collected">0</span> listings collected.</p>
+          </div>
+        </div>
+
+        <div class="button-row">
+          <button id="download-btn" class="primary-btn">
+            <span>Download Excel</span>
+            <svg class="icon-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          </button>
+          <button id="reset-btn" class="secondary-btn">New Scrape</button>
+        </div>
+      </div>
+    </main>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

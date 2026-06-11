@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "JustDial Data Scraper",
+  "version": "1.0.0",
+  "description": "Extracts names, addresses, and phone numbers from JustDial listing pages.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tabs",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://*.justdial.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  }
+}

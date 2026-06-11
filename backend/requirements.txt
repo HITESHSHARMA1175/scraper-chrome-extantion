@@ -1,7 +1,0 @@
-undetected-chromedriver
-pandas
-flask
-flask-cors
-selenium
-setuptools
-gunicorn
