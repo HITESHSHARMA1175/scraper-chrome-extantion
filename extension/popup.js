@@ -210,7 +210,7 @@ function downloadCsv() {
 
   currentResults.forEach(item => {
     const escapeCsv = (str) => {
-      if (str === undefined || str === null || String(str).trim() === 'N/A') return '""';
+      if (str === undefined || str === null || String(str).trim() === '' || String(str).trim() === 'N/A') return '"N/A"';
       let stringVal = String(str);
       let cleaned = stringVal.replace(/\r?\n|\r/g, ' ').trim();
       if (cleaned.includes('"') || cleaned.includes(',') || cleaned.includes('\n')) {
