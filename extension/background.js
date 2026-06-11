@@ -6,6 +6,7 @@ let scrapeState = {
   results: [],
   targetCount: 100,
   fields: {},
+  mode: 'fast',
   status: 'Ready'
 };
 
@@ -15,6 +16,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     scrapeState.tabId = message.tabId;
     scrapeState.targetCount = message.targetCount;
     scrapeState.fields = message.fields;
+    scrapeState.mode = message.mode || 'fast';
     scrapeState.results = [];
     scrapeState.status = 'Initializing...';
     sendResponse({ success: true });

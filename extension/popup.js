@@ -19,7 +19,8 @@ const totalCollected = document.getElementById('total-collected');
 let currentResults = [];
 
 const defaultFields = ['name', 'phone', 'address', 'rating', 'reviews'];
-const allFieldKeys = ['name', 'phone', 'address', 'rating', 'reviews', 'category', 'years', 'website', 'whatsapp', 'email', 'hours', 'location', 'pincode'];
+// Order keys according to the exact CSV request
+const allFieldKeys = ['name', 'phone', 'address', 'rating', 'reviews', 'website', 'whatsapp', 'email', 'location', 'category', 'years', 'hours', 'pincode'];
 
 // Load state on open
 document.addEventListener('DOMContentLoaded', () => {
@@ -85,6 +86,7 @@ startBtn.addEventListener('click', () => {
 
     const limit = parseInt(limitInput.value) || 100;
     const selectedFields = getSelectedFields();
+    const mode = document.querySelector('input[name="mode"]:checked').value;
 
     // Verify at least one field is selected
     const activeFieldKeys = allFieldKeys.filter(key => selectedFields[key]);
@@ -115,14 +117,16 @@ startBtn.addEventListener('click', () => {
       chrome.tabs.sendMessage(tabId, {
         action: 'init',
         targetCount: limit,
-        fields: selectedFields
+        fields: selectedFields,
+        mode: mode
       }, () => {
         // Signal background service worker that scrape has started
         chrome.runtime.sendMessage({
           action: 'startScrape',
           tabId: tabId,
           targetCount: limit,
-          fields: selectedFields
+          fields: selectedFields,
+          mode: mode
         });
       });
     });
@@ -166,13 +170,13 @@ function downloadCsv() {
     address: 'Address',
     rating: 'Rating',
     reviews: 'Reviews Count',
-    category: 'Category',
-    years: 'Years in Business',
     website: 'Website',
     whatsapp: 'WhatsApp Number',
     email: 'Email',
-    hours: 'Opening Hours',
     location: 'Location',
+    category: 'Category',
+    years: 'Years In Business',
+    hours: 'Opening Hours',
     pincode: 'Pincode'
   };
 
@@ -203,13 +207,13 @@ function downloadCsv() {
       else if (key === 'address') val = item.address;
       else if (key === 'rating') val = item.rating;
       else if (key === 'reviews') val = item.reviews;
-      else if (key === 'category') val = item.category;
-      else if (key === 'years') val = item.years_in_business;
       else if (key === 'website') val = item.website;
       else if (key === 'whatsapp') val = item.whatsapp;
       else if (key === 'email') val = item.email;
-      else if (key === 'hours') val = item.opening_hours;
       else if (key === 'location') val = item.location;
+      else if (key === 'category') val = item.category;
+      else if (key === 'years') val = item.years_in_business;
+      else if (key === 'hours') val = item.opening_hours;
       else if (key === 'pincode') val = item.pincode;
       return escapeCsv(val);
     }).join(',');
@@ -292,6 +296,7 @@ function showResults(results) {
   switchPanel(resultsPanel);
 }
 
+// Custom error handling helper showing actual text
 function showError(error) {
   statusText.innerText = 'Failed: ' + error;
   switchPanel(progressPanel);
@@ -309,9 +314,13 @@ function getSelectedFields() {
 }
 
 function loadSettings() {
-  chrome.storage.local.get(['limit', 'fields'], (data) => {
+  chrome.storage.local.get(['limit', 'fields', 'mode'], (data) => {
     if (data.limit) {
       limitInput.value = data.limit;
+    }
+    if (data.mode) {
+      const radio = document.getElementById(`mode-${data.mode}`);
+      if (radio) radio.checked = true;
     }
     if (data.fields) {
       allFieldKeys.forEach(key => {
@@ -334,5 +343,6 @@ function loadSettings() {
 function saveSettings() {
   const limit = parseInt(limitInput.value) || 100;
   const fields = getSelectedFields();
-  chrome.storage.local.set({ limit, fields });
+  const mode = document.querySelector('input[name="mode"]:checked').value;
+  chrome.storage.local.set({ limit, fields, mode });
 }

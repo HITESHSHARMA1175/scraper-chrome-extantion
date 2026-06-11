@@ -336,6 +336,38 @@ body {
   cursor: pointer;
 }
 
+/* Scraping Mode Selector */
+.mode-selector {
+  display: flex;
+  gap: 16px;
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+}
+
+.mode-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s ease;
+}
+
+.mode-option:hover {
+  color: var(--text-primary);
+}
+
+.mode-option input[type="radio"] {
+  width: auto !important;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
 /* Error Banner and Screen Styles */
 .error-banner {
   display: flex;

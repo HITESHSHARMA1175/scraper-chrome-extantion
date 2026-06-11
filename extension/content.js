@@ -4,12 +4,14 @@ let results = [];
 let targetCount = 100;
 let isStopped = false;
 let selectedFields = {};
+let scrapeMode = 'fast';
 
 // Register message listener
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'init') {
     targetCount = message.targetCount || 100;
     selectedFields = message.fields || {};
+    scrapeMode = message.mode || 'fast';
     isStopped = false;
     results = [];
     sendResponse({ success: true });
@@ -23,7 +25,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function startScrapingLoop() {
-  console.log("JustDial Scraper active. Target:", targetCount, "Fields:", selectedFields);
+  console.log("JustDial Scraper active. Mode:", scrapeMode, "Target:", targetCount, "Fields:", selectedFields);
   
   if (document.readyState !== 'complete') {
     await new Promise(resolve => window.addEventListener('load', resolve));
@@ -36,9 +38,9 @@ async function startScrapingLoop() {
   while (!isStopped) {
     dismissPopup();
 
-    // Scroll down to load lazy elements
+    // Scroll down to trigger lazy loading
     window.scrollBy(0, window.innerHeight / 2);
-    await sleep(randomRange(1000, 1800));
+    await sleep(randomRange(1200, 2000));
     
     // Extract current visible listings
     await extractData();
@@ -47,7 +49,9 @@ async function startScrapingLoop() {
     chrome.runtime.sendMessage({
       action: 'updateResults',
       results: results,
-      status: `Scraped: ${results.length} / ${targetCount}`
+      status: scrapeMode === 'deep'
+        ? `Deep Scraping: collected ${results.length} / ${targetCount}`
+        : `Scraped: ${results.length} / ${targetCount}`
     });
 
     if (results.length >= targetCount) {
@@ -63,8 +67,8 @@ async function startScrapingLoop() {
       lastChangeTime = Date.now();
     }
     
-    // Check if bottom reached or no new results loaded for 20s
-    if (currentHeight === lastHeight && (Date.now() - lastChangeTime > 20000)) {
+    // Check if bottom reached or no new results loaded for 25s
+    if (currentHeight === lastHeight && (Date.now() - lastChangeTime > 25000)) {
       console.log("No more listings loading. Stopping.");
       break;
     }
@@ -81,7 +85,7 @@ async function startScrapingLoop() {
     }
   }
 
-  // Notify finish
+  // Notify background service worker of completion
   chrome.runtime.sendMessage({
     action: 'scrapeCompleted',
     results: results
@@ -103,6 +107,206 @@ function dismissPopup() {
       console.log("Dismissed popup:", sel);
       break;
     }
+  }
+}
+
+// Validation routines
+function isValidBusinessName(name) {
+  if (!name) return false;
+  const trimmed = name.trim();
+  if (trimmed === "") return false;
+  
+  // Ignore "+X More" entries and items starting/ending with "More"
+  if (/\+\d+\s+More/i.test(trimmed)) return false;
+  if (/^\d+\s+More/i.test(trimmed)) return false;
+  if (trimmed.toLowerCase().endsWith('more')) return false;
+
+  // Ignore junk items
+  const junkPhrases = [
+    'show number', 'get this list', 'top 10', "t&c's privacy policy", 
+    't&c', 'privacy policy', 'get quotes', 'more...', 'add listing', 
+    'advertise', 'sign up', 'login', 'pure veg', 'ratings', 'reviews', 
+    'suggestions', 'verified', 'trusted'
+  ];
+  const lowerName = trimmed.toLowerCase();
+  for (let junk of junkPhrases) {
+    if (lowerName === junk || lowerName === 'n/a') {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Advertisement Filter
+function isAdvertisement(parent) {
+  const adClasses = ['.ad-label', '.sponsored-label', '.resultbox_ad', '.ad-tag', '.ad-listed', '[class*="sponsored"]', '.sponsored', '.ad'];
+  for (let cls of adClasses) {
+    if (parent.querySelector(cls)) return true;
+  }
+  const badges = parent.querySelectorAll('span, div, p');
+  for (let badge of badges) {
+    const text = badge.innerText.trim();
+    if (text === 'Ad' || text === 'AD' || text === 'Sponsored') {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Regex Address Cleaner separating quoted review snippets and suggestion text
+function cleanAddress(rawAddress) {
+  if (!rawAddress || rawAddress === 'N/A') return 'N/A';
+  let cleaned = rawAddress.trim();
+  
+  // 1. Remove quoted review snippets
+  cleaned = cleaned.replace(/"[^"]*"/g, '');
+  
+  // 2. Remove suggestions
+  cleaned = cleaned.replace(/\b\d+\s+Suggestions?\b/i, '');
+
+  // 3. Remove ratings, reviews, and votes counts
+  cleaned = cleaned.replace(/\b\d+\s+Rating[s]?\b/i, '');
+  cleaned = cleaned.replace(/\b\d+\s+Review[s]?\b/i, '');
+  cleaned = cleaned.replace(/\b\d+\s+Vote[s]?\b/i, '');
+  
+  // 4. Remove promotional words
+  const promoKeywords = ['get quotes', 'enquire now', 'ratings', 'votes', 'suggestions'];
+  promoKeywords.forEach(keyword => {
+    cleaned = cleaned.replace(new RegExp(keyword, 'gi'), '');
+  });
+
+  // 5. Clean punctuation spacing
+  cleaned = cleaned.replace(/,\s*,/g, ',');
+  cleaned = cleaned.replace(/\s+/g, ' ');
+  cleaned = cleaned.trim();
+  
+  if (cleaned.startsWith(',')) cleaned = cleaned.substring(1).trim();
+  if (cleaned.endsWith(',')) cleaned = cleaned.substring(0, cleaned.length - 1).trim();
+  
+  return cleaned || 'N/A';
+}
+
+// AJAX Deep Profile Fetcher parsing missing details
+async function fetchProfileDetails(url) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const htmlText = await response.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlText, 'text/html');
+    
+    const profileData = {};
+    
+    // 1. Website
+    const webSelectors = [
+      'a.website-link',
+      'a[class*="web"]',
+      'a[href*="website"]',
+      'a.comp-web',
+      'a[href^="http"]:not([href*="justdial.com"]):not([href*="facebook"]):not([href*="twitter"]):not([href*="instagram"]):not([href*="linkedin"]):not([href*="whatsapp"]):not([href*="wa.me"])'
+    ];
+    for (let sel of webSelectors) {
+      const el = doc.querySelector(sel);
+      if (el && el.getAttribute('href')) {
+        profileData.website = el.getAttribute('href').trim();
+        break;
+      }
+    }
+
+    // 2. Email
+    const mailEl = doc.querySelector('a[href^="mailto:"]');
+    if (mailEl) {
+      profileData.email = mailEl.getAttribute('href').replace('mailto:', '').split('?')[0].trim();
+    } else {
+      const textContent = doc.body ? doc.body.innerText : '';
+      const emailMatch = textContent.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/);
+      if (emailMatch) {
+        profileData.email = emailMatch[0];
+      }
+    }
+
+    // 3. Rating
+    const ratingSel = ['.rating-value', '.rate_value', '.rating_value', '.votes_count', 'span[class*="rating"]', 'div[class*="rating"]', '.green-box'];
+    for (let sel of ratingSel) {
+      const el = doc.querySelector(sel);
+      if (el && el.innerText.trim()) {
+        const ratingMatch = el.innerText.trim().match(/\b[1-5]\.[0-9]\b/);
+        if (ratingMatch) {
+          profileData.rating = ratingMatch[0];
+          break;
+        }
+      }
+    }
+
+    // 4. Reviews Count
+    const reviewsSel = ['.votes_count', '.reviews_count', 'span[class*="vote"]', 'span[class*="review"]', '.votes_count_val'];
+    for (let sel of reviewsSel) {
+      const el = doc.querySelector(sel);
+      if (el && el.innerText.trim()) {
+        const votesMatch = el.innerText.trim().match(/\b\d+\b/);
+        if (votesMatch) {
+          profileData.reviews = votesMatch[0];
+          break;
+        }
+      }
+    }
+
+    // 5. WhatsApp
+    const waSel = ['a[href*="wa.me"]', 'a[href*="whatsapp"]', '[class*="whatsapp"] a', '[class*="whatsapp"]'];
+    for (let sel of waSel) {
+      const el = doc.querySelector(sel);
+      if (el) {
+        const href = el.getAttribute('href') || '';
+        const phoneMatch = href.match(/(?:wa\.me|phone=)(\+?\d+)/);
+        if (phoneMatch) {
+          profileData.whatsapp = phoneMatch[1];
+          break;
+        }
+      }
+    }
+
+    // 6. Category
+    const catSel = ['.category_link', '.category_text', 'span[class*="category"]', 'a[class*="category"]', '.comp-cat'];
+    for (let sel of catSel) {
+      const el = doc.querySelector(sel);
+      if (el && el.innerText.trim()) {
+        profileData.category = el.innerText.trim();
+        break;
+      }
+    }
+
+    // 7. Years in Business
+    const yrsMatch = doc.body ? doc.body.innerText.match(/\b(\d+)\s+Years?\s+in\s+Business\b/i) : null;
+    if (yrsMatch) {
+      profileData.years_in_business = yrsMatch[1];
+    }
+
+    // 8. Address / Location / Pincode
+    const addrSelectors = ['.address_info', '.addr_text', '.store-address', '.comp-addr', '.contact-info'];
+    let detailAddr = "";
+    for (let sel of addrSelectors) {
+      const el = doc.querySelector(sel);
+      if (el && el.innerText.trim()) {
+        detailAddr = el.innerText.trim();
+        break;
+      }
+    }
+    if (detailAddr) {
+      profileData.address = cleanAddress(detailAddr);
+      const pinMatch = detailAddr.match(/\b\d{6}\b/);
+      if (pinMatch) {
+        profileData.pincode = pinMatch[0];
+      }
+      const parts = detailAddr.split(',');
+      if (parts.length > 0) {
+        profileData.location = parts[0].trim();
+      }
+    }
+    
+    return profileData;
+  } catch (err) {
+    console.error("Error fetching or parsing profile page:", url, err);
+    return null;
   }
 }
 
@@ -130,8 +334,9 @@ async function extractData() {
     if (results.length >= targetCount || isStopped) break;
     
     try {
-      // 1. Business Name
+      // 1. Business Name and URL
       let name = "";
+      let detailUrl = "";
       const nameSelectors = [
         '.resultbox_title_anchor',
         'span.jcn a',
@@ -143,20 +348,38 @@ async function extractData() {
       ];
       for (let sel of nameSelectors) {
         const el = parent.querySelector(sel);
-        if (el && el.innerText.trim()) {
-          name = el.innerText.trim();
-          break;
+        if (el) {
+          if (el.innerText.trim()) {
+            name = el.innerText.trim();
+          }
+          if (el.tagName === 'A' && el.getAttribute('href')) {
+            detailUrl = el.href;
+          }
+          if (name) break;
         }
       }
-      
-      if (!name || seenNames.has(name.toLowerCase())) {
+
+      if (!detailUrl) {
+        const a = parent.querySelector('a');
+        if (a && a.getAttribute('href')) {
+          detailUrl = a.href;
+        }
+      }
+
+      // Check Business Name validity
+      if (!isValidBusinessName(name) || seenNames.has(name.toLowerCase())) {
         continue;
       }
 
-      // Check cache text of parent for extracting other details
+      // Skip Advertisements
+      if (isAdvertisement(parent)) {
+        console.log("Skipped advertisement:", name);
+        continue;
+      }
+
       const cardText = parent.innerText || '';
 
-      // 2. Phone Number
+      // 2. Phone Number (Clicking to reveal is optional and based on checkbox setting)
       let phone = "N/A";
       if (selectedFields['phone'] || selectedFields['whatsapp']) {
         const phoneSelectors = [
@@ -169,11 +392,10 @@ async function extractData() {
         for (let sel of phoneSelectors) {
           const el = parent.querySelector(sel);
           if (el) {
-            // Click to reveal hidden numbers
             if (el.classList.contains('callcontent') || el.innerText.includes('Show Number')) {
               try {
                 el.click();
-                await sleep(350); // wait for text to populate
+                await sleep(350);
               } catch (clickErr) {}
             }
             if (el.innerText.trim() && !el.innerText.includes('Show Number')) {
@@ -200,7 +422,7 @@ async function extractData() {
       for (let sel of addressSelectors) {
         const el = parent.querySelector(sel);
         if (el && el.innerText.trim()) {
-          address = el.innerText.trim();
+          address = cleanAddress(el.innerText.trim());
           break;
         }
       }
@@ -400,20 +622,45 @@ async function extractData() {
         pincode = pinMatch[0];
       }
 
-      // Record to results
+      // Deep Scraping Profile Merge
+      if (scrapeMode === 'deep' && detailUrl) {
+        // Send state updates with profile info
+        chrome.runtime.sendMessage({
+          action: 'updateResults',
+          results: results,
+          status: `Deep Scraping: profile ${results.length + 1} / ${targetCount} (${name})`
+        });
+        
+        await sleep(randomRange(500, 1000)); // rate limiting delay
+        const profileDetails = await fetchProfileDetails(detailUrl);
+        if (profileDetails) {
+          if (profileDetails.website && profileDetails.website !== 'N/A') website = profileDetails.website;
+          if (profileDetails.email && profileDetails.email !== 'N/A') email = profileDetails.email;
+          if (profileDetails.rating && profileDetails.rating !== 'N/A') rating = profileDetails.rating;
+          if (profileDetails.reviews && profileDetails.reviews !== 'N/A') reviews = profileDetails.reviews;
+          if (profileDetails.whatsapp && profileDetails.whatsapp !== 'N/A') whatsapp = profileDetails.whatsapp;
+          if (profileDetails.category && profileDetails.category !== 'N/A') category = profileDetails.category;
+          if (profileDetails.years_in_business && profileDetails.years_in_business !== 'N/A') years_in_business = profileDetails.years_in_business;
+          if (profileDetails.address && profileDetails.address !== 'N/A') address = profileDetails.address;
+          if (profileDetails.pincode && profileDetails.pincode !== 'N/A') pincode = profileDetails.pincode;
+          if (profileDetails.location && profileDetails.location !== 'N/A') location = profileDetails.location;
+        }
+      }
+
+      // Push sanitised results
       results.push({
         name,
         phone,
         address,
         rating,
         reviews,
-        category,
-        years_in_business,
         website,
         whatsapp,
         email,
-        opening_hours,
         location,
+        category,
+        years_in_business,
+        opening_hours,
         pincode
       });
       
@@ -432,17 +679,17 @@ function triggerDownload() {
     address: 'Address',
     rating: 'Rating',
     reviews: 'Reviews Count',
-    category: 'Category',
-    years: 'Years in Business',
     website: 'Website',
     whatsapp: 'WhatsApp Number',
     email: 'Email',
-    hours: 'Opening Hours',
     location: 'Location',
+    category: 'Category',
+    years: 'Years In Business',
+    hours: 'Opening Hours',
     pincode: 'Pincode'
   };
 
-  const allKeys = ['name', 'phone', 'address', 'rating', 'reviews', 'category', 'years', 'website', 'whatsapp', 'email', 'hours', 'location', 'pincode'];
+  const allKeys = ['name', 'phone', 'address', 'rating', 'reviews', 'website', 'whatsapp', 'email', 'location', 'category', 'years', 'hours', 'pincode'];
   const activeFieldKeys = allKeys.filter(key => selectedFields[key]);
   
   if (activeFieldKeys.length === 0) return;
@@ -468,13 +715,13 @@ function triggerDownload() {
       else if (key === 'address') val = item.address;
       else if (key === 'rating') val = item.rating;
       else if (key === 'reviews') val = item.reviews;
-      else if (key === 'category') val = item.category;
-      else if (key === 'years') val = item.years_in_business;
       else if (key === 'website') val = item.website;
       else if (key === 'whatsapp') val = item.whatsapp;
       else if (key === 'email') val = item.email;
-      else if (key === 'hours') val = item.opening_hours;
       else if (key === 'location') val = item.location;
+      else if (key === 'category') val = item.category;
+      else if (key === 'years') val = item.years_in_business;
+      else if (key === 'hours') val = item.opening_hours;
       else if (key === 'pincode') val = item.pincode;
       return escapeCsv(val);
     }).join(',');
