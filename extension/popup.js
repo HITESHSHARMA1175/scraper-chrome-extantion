@@ -3,14 +3,13 @@
 const inputPanel = document.getElementById('input-panel');
 const progressPanel = document.getElementById('progress-panel');
 const resultsPanel = document.getElementById('results-panel');
+const errorPanel = document.getElementById('error-panel');
 
 const startBtn = document.getElementById('start-btn');
 const stopBtn = document.getElementById('stop-btn');
 const downloadBtn = document.getElementById('download-btn');
 const resetBtn = document.getElementById('reset-btn');
 
-const cityInput = document.getElementById('city');
-const keywordInput = document.getElementById('keyword');
 const limitInput = document.getElementById('limit');
 
 const collectedCount = document.getElementById('collected-count');
@@ -18,11 +17,14 @@ const statusText = document.getElementById('status-text');
 const totalCollected = document.getElementById('total-collected');
 
 let currentResults = [];
-let currentCity = '';
-let currentKeyword = '';
+
+const defaultFields = ['name', 'phone', 'address', 'rating', 'reviews'];
+const allFieldKeys = ['name', 'phone', 'address', 'rating', 'reviews', 'category', 'years', 'website', 'whatsapp', 'email', 'hours', 'location', 'pincode'];
 
 // Load state on open
 document.addEventListener('DOMContentLoaded', () => {
+  loadSettings();
+  
   chrome.runtime.sendMessage({ action: 'getState' }, (state) => {
     restoreState(state);
   });
@@ -45,59 +47,84 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-// Start Scraping
-startBtn.addEventListener('click', async () => {
-  const city = cityInput.value.trim();
-  const keyword = keywordInput.value.trim();
-  const limit = parseInt(limitInput.value) || 50;
-
-  if (!city || !keyword) {
-    alert('Please enter both City and Keyword.');
-    return;
-  }
-
-  currentCity = city;
-  currentKeyword = keyword;
-  currentResults = [];
-
-  // Normalize inputs for JustDial URL format
-  const normalizedCity = city.replace(/\s+/g, '-');
-  const normalizedKeyword = keyword.replace(/\s+/g, '-');
-  const url = `https://www.justdial.com/${normalizedCity}/${normalizedKeyword}/`;
-
-  statusText.innerText = 'Creating background tab...';
-  switchPanel(progressPanel);
-
-  // 1. Create the JustDial tab (inactive so it doesn't disrupt the user)
-  chrome.tabs.create({ url: url, active: false }, (tab) => {
-    const tabId = tab.id;
-
-    // 2. Listen for tab load completion to inject content.js
-    chrome.tabs.onUpdated.addListener(function tabListener(id, changeInfo) {
-      if (id === tabId && changeInfo.status === 'complete') {
-        chrome.tabs.onUpdated.removeListener(tabListener);
-
-        // Inject content.js
-        chrome.scripting.executeScript({
-          target: { tabId: tabId },
-          files: ['content.js']
-        }, () => {
-          // Initialize scraper settings in content script
-          chrome.tabs.sendMessage(tabId, {
-            action: 'init',
-            targetCount: limit
-          }, () => {
-            // Signal background service worker that scrape has started
-            chrome.runtime.sendMessage({
-              action: 'startScrape',
-              tabId: tabId,
-              targetCount: limit,
-              city: city,
-              keyword: keyword
-            });
-          });
-        });
+// Check if tab is JustDial
+function checkActiveTab(callback) {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs && tabs[0]) {
+      const activeTab = tabs[0];
+      const url = activeTab.url || '';
+      const isJustDial = url.includes('justdial.com');
+      
+      if (!isJustDial) {
+        inputPanel.classList.add('hidden');
+        progressPanel.classList.add('hidden');
+        resultsPanel.classList.add('hidden');
+        errorPanel.classList.remove('hidden');
+        callback(false, activeTab);
+      } else {
+        errorPanel.classList.add('hidden');
+        callback(true, activeTab);
       }
+    } else {
+      inputPanel.classList.add('hidden');
+      progressPanel.classList.add('hidden');
+      resultsPanel.classList.add('hidden');
+      errorPanel.classList.remove('hidden');
+      callback(false, null);
+    }
+  });
+}
+
+// Start Scraping
+startBtn.addEventListener('click', () => {
+  checkActiveTab((isJustDial, activeTab) => {
+    if (!isJustDial || !activeTab) {
+      alert('Please open a JustDial search results page first.');
+      return;
+    }
+
+    const limit = parseInt(limitInput.value) || 100;
+    const selectedFields = getSelectedFields();
+
+    // Verify at least one field is selected
+    const activeFieldKeys = allFieldKeys.filter(key => selectedFields[key]);
+    if (activeFieldKeys.length === 0) {
+      alert('Please select at least one field to scrape.');
+      return;
+    }
+
+    saveSettings();
+    currentResults = [];
+
+    statusText.innerText = 'Initializing scraper...';
+    switchPanel(progressPanel);
+
+    const tabId = activeTab.id;
+
+    // Inject content.js
+    chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      files: ['content.js']
+    }, () => {
+      if (chrome.runtime.lastError) {
+        showError('Injection failed: ' + chrome.runtime.lastError.message);
+        return;
+      }
+
+      // Initialize scraper settings in content script
+      chrome.tabs.sendMessage(tabId, {
+        action: 'init',
+        targetCount: limit,
+        fields: selectedFields
+      }, () => {
+        // Signal background service worker that scrape has started
+        chrome.runtime.sendMessage({
+          action: 'startScrape',
+          tabId: tabId,
+          targetCount: limit,
+          fields: selectedFields
+        });
+      });
     });
   });
 });
@@ -111,47 +138,89 @@ stopBtn.addEventListener('click', () => {
 
 // Reset / New Scrape
 resetBtn.addEventListener('click', () => {
-  switchPanel(inputPanel);
-  collectedCount.innerText = '0';
-  statusText.innerText = 'Initializing...';
+  checkActiveTab((isJustDial) => {
+    if (isJustDial) {
+      switchPanel(inputPanel);
+      collectedCount.innerText = '0';
+      statusText.innerText = 'Initializing...';
+    }
+  });
 });
 
 // Download CSV
 downloadBtn.addEventListener('click', () => {
+  downloadCsv();
+});
+
+function downloadCsv() {
   if (currentResults.length === 0) {
     alert('No results to download.');
     return;
   }
 
-  // Build CSV content
-  let csvContent = "\ufeffName,Address,Phone\n"; // Added BOM for proper UTF-8 Excel encoding
+  const selectedFields = getSelectedFields();
+  
+  const headersMap = {
+    name: 'Business Name',
+    phone: 'Phone Number',
+    address: 'Address',
+    rating: 'Rating',
+    reviews: 'Reviews Count',
+    category: 'Category',
+    years: 'Years in Business',
+    website: 'Website',
+    whatsapp: 'WhatsApp Number',
+    email: 'Email',
+    hours: 'Opening Hours',
+    location: 'Location',
+    pincode: 'Pincode'
+  };
+
+  const activeFieldKeys = allFieldKeys.filter(key => selectedFields[key]);
+  if (activeFieldKeys.length === 0) {
+    alert('Please select at least one field to export.');
+    return;
+  }
+
+  const headers = activeFieldKeys.map(key => headersMap[key]).join(',');
+  let csvContent = "\ufeff" + headers + "\n"; // UTF-8 BOM
 
   currentResults.forEach(item => {
-    // Escape standard CSV fields
     const escapeCsv = (str) => {
-      if (!str) return '""';
-      // Replace any multi-line/newline characters with a space
-      let cleaned = str.replace(/\r?\n|\r/g, ' ').trim();
-      // Escape double quotes inside the field (replace " with "")
+      if (str === undefined || str === null) return '""';
+      let stringVal = String(str);
+      let cleaned = stringVal.replace(/\r?\n|\r/g, ' ').trim();
       if (cleaned.includes('"') || cleaned.includes(',') || cleaned.includes('\n')) {
         return `"${cleaned.replace(/"/g, '""')}"`;
       }
       return `"${cleaned}"`;
     };
 
-    const escapedName = escapeCsv(item.name);
-    const escapedAddress = escapeCsv(item.address);
-    const escapedPhone = escapeCsv(item.phone);
+    const row = activeFieldKeys.map(key => {
+      let val = '';
+      if (key === 'name') val = item.name;
+      else if (key === 'phone') val = item.phone;
+      else if (key === 'address') val = item.address;
+      else if (key === 'rating') val = item.rating;
+      else if (key === 'reviews') val = item.reviews;
+      else if (key === 'category') val = item.category;
+      else if (key === 'years') val = item.years_in_business;
+      else if (key === 'website') val = item.website;
+      else if (key === 'whatsapp') val = item.whatsapp;
+      else if (key === 'email') val = item.email;
+      else if (key === 'hours') val = item.opening_hours;
+      else if (key === 'location') val = item.location;
+      else if (key === 'pincode') val = item.pincode;
+      return escapeCsv(val);
+    }).join(',');
 
-    csvContent += `${escapedName},${escapedAddress},${escapedPhone}\n`;
+    csvContent += row + "\n";
   });
 
   const base64Data = btoa(unescape(encodeURIComponent(csvContent)));
   const dataUrl = 'data:text/csv;charset=utf-8;base64,' + base64Data;
-  const filename = 'listings.csv';
+  const filename = 'justdial_data.csv';
 
-  // Get active tab and trigger the download from the web page context of that tab.
-  // This bypasses extension popup restrictions on data URLs which force raw GUID filenames.
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs && tabs[0]) {
       const activeTabId = tabs[0].id;
@@ -177,7 +246,7 @@ downloadBtn.addEventListener('click', () => {
       fallbackDownload(dataUrl, filename);
     }
   });
-});
+}
 
 function fallbackDownload(url, filename) {
   const link = document.createElement('a');
@@ -189,18 +258,17 @@ function fallbackDownload(url, filename) {
   document.body.removeChild(link);
 }
 
-// Helper functions
+// Helpers
 function switchPanel(activePanel) {
   inputPanel.classList.add('hidden');
   progressPanel.classList.add('hidden');
   resultsPanel.classList.add('hidden');
+  errorPanel.classList.add('hidden');
   
   activePanel.classList.remove('hidden');
 }
 
 function restoreState(state) {
-  currentCity = state.city;
-  currentKeyword = state.keyword;
   currentResults = state.results;
 
   if (state.active) {
@@ -210,7 +278,11 @@ function restoreState(state) {
   } else if (state.status === 'Completed' || state.status === 'Stopped') {
     showResults(state.results);
   } else {
-    switchPanel(inputPanel);
+    checkActiveTab((isJustDial) => {
+      if (isJustDial) {
+        switchPanel(inputPanel);
+      }
+    });
   }
 }
 
@@ -223,4 +295,44 @@ function showResults(results) {
 function showError(error) {
   statusText.innerText = 'Failed: ' + error;
   switchPanel(progressPanel);
+}
+
+function getSelectedFields() {
+  const fields = {};
+  allFieldKeys.forEach(key => {
+    const el = document.getElementById(`field-${key}`);
+    if (el) {
+      fields[key] = el.checked;
+    }
+  });
+  return fields;
+}
+
+function loadSettings() {
+  chrome.storage.local.get(['limit', 'fields'], (data) => {
+    if (data.limit) {
+      limitInput.value = data.limit;
+    }
+    if (data.fields) {
+      allFieldKeys.forEach(key => {
+        const el = document.getElementById(`field-${key}`);
+        if (el) {
+          el.checked = !!data.fields[key];
+        }
+      });
+    } else {
+      allFieldKeys.forEach(key => {
+        const el = document.getElementById(`field-${key}`);
+        if (el) {
+          el.checked = defaultFields.includes(key);
+        }
+      });
+    }
+  });
+}
+
+function saveSettings() {
+  const limit = parseInt(limitInput.value) || 100;
+  const fields = getSelectedFields();
+  chrome.storage.local.set({ limit, fields });
 }

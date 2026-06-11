@@ -20,23 +20,70 @@
     </header>
 
     <main class="content">
+      <!-- Error Panel (Not on JustDial) -->
+      <div id="error-panel" class="card fade-in hidden">
+        <div class="error-banner">
+          <svg class="error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <div class="banner-text">
+            <h3>Not on JustDial Page</h3>
+            <p>Please open a JustDial search results page in Chrome before scraping.</p>
+          </div>
+        </div>
+        <p class="error-instructions">Open <a href="https://www.justdial.com" target="_blank" class="accent-link">justdial.com</a> and search for any service to begin.</p>
+      </div>
+
       <!-- Input Panel -->
       <div id="input-panel" class="card fade-in">
         <h2>Parameters</h2>
         
         <div class="form-group">
-          <label for="city">City</label>
-          <input type="text" id="city" placeholder="e.g. Bangalore" value="">
+          <label for="limit">Records Limit</label>
+          <input type="number" id="limit" min="5" max="1000" value="100">
         </div>
 
         <div class="form-group">
-          <label for="keyword">Search Keyword</label>
-          <input type="text" id="keyword" placeholder="e.g. Pizza" value="">
-        </div>
-
-        <div class="form-group">
-          <label for="limit">Target Record Limit</label>
-          <input type="number" id="limit" min="5" max="500" value="50">
+          <label class="section-label">Select Fields to Scrape:</label>
+          <div class="fields-grid">
+            <label class="field-checkbox-label">
+              <input type="checkbox" id="field-name" checked> Name
+            </label>
+            <label class="field-checkbox-label">
+              <input type="checkbox" id="field-phone" checked> Phone
+            </label>
+            <label class="field-checkbox-label">
+              <input type="checkbox" id="field-address" checked> Address
+            </label>
+            <label class="field-checkbox-label">
+              <input type="checkbox" id="field-rating" checked> Rating
+            </label>
+            <label class="field-checkbox-label">
+              <input type="checkbox" id="field-reviews" checked> Reviews
+            </label>
+            <label class="field-checkbox-label">
+              <input type="checkbox" id="field-category"> Category
+            </label>
+            <label class="field-checkbox-label">
+              <input type="checkbox" id="field-years"> Years in Biz
+            </label>
+            <label class="field-checkbox-label">
+              <input type="checkbox" id="field-website"> Website
+            </label>
+            <label class="field-checkbox-label">
+              <input type="checkbox" id="field-whatsapp"> WhatsApp
+            </label>
+            <label class="field-checkbox-label">
+              <input type="checkbox" id="field-email"> Email
+            </label>
+            <label class="field-checkbox-label">
+              <input type="checkbox" id="field-hours"> Hours
+            </label>
+            <label class="field-checkbox-label">
+              <input type="checkbox" id="field-location"> Location
+            </label>
+            <label class="field-checkbox-label">
+              <input type="checkbox" id="field-pincode"> Pincode
+            </label>
+          </div>
         </div>
 
         <button id="start-btn" class="primary-btn">

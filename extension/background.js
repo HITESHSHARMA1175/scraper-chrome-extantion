@@ -5,8 +5,7 @@ let scrapeState = {
   tabId: null,
   results: [],
   targetCount: 100,
-  city: '',
-  keyword: '',
+  fields: {},
   status: 'Ready'
 };
 
@@ -15,8 +14,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     scrapeState.active = true;
     scrapeState.tabId = message.tabId;
     scrapeState.targetCount = message.targetCount;
-    scrapeState.city = message.city;
-    scrapeState.keyword = message.keyword;
+    scrapeState.fields = message.fields;
     scrapeState.results = [];
     scrapeState.status = 'Initializing...';
     sendResponse({ success: true });
@@ -24,8 +22,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   else if (message.action === 'updateResults') {
     scrapeState.results = message.results;
     scrapeState.status = message.status || 'Scraping...';
-    // Forward message to popup if it is open
-    chrome.runtime.sendMessage(message).catch(() => {}); // Ignore error if popup closed
+    // Forward message to popup if open
+    chrome.runtime.sendMessage(message).catch(() => {}); 
     sendResponse({ success: true });
   } 
   else if (message.action === 'scrapeCompleted') {
